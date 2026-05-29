@@ -47,8 +47,8 @@ PATIENCE = 15  # stop early if validation mAP plateaus — saves hours of wasted
 SEED = 42
 
 # Output configuration
-PROJECT_NAME = "yolov8-car-training"
-RUN_NAME = "nano-run-1"
+PROJECT_NAME = "yolov8x-vehicle-training"
+RUN_NAME = "vehicle-run-1"
 
 # Post-training validation
 CONF_THRESHOLD = 0.25
@@ -202,14 +202,14 @@ def main():
         torch.set_num_threads(cpu_count)
         print(f"[System] CPU threads set to {cpu_count}")
 
-    # 1. Download dataset
-    data_yaml = download_roboflow_dataset(
-        ROBOFLOW_API_KEY,
-        ROBOFLOW_WORKSPACE,
-        ROBOFLOW_PROJECT,
-        ROBOFLOW_VERSION,
-        ROBOFLOW_FORMAT,
-    )
+    # 1. Use combined local dataset
+    data_yaml = "combined-vehicle-dataset/data.yaml"
+    if not os.path.isfile(data_yaml):
+        print(f"[Error] Combined dataset not found: {data_yaml}")
+        print("  Run: python build_dataset.py")
+        raise SystemExit(1)
+    print(f"[Dataset] Using combined vehicle dataset: {data_yaml}")
+    print(f"  (Run 'python build_dataset.py' to rebuild if needed)")
 
     # 2. Train model
     best_weights = train_model(data_yaml)
