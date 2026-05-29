@@ -3,12 +3,20 @@ YOLOv8 Nano Training Script with Roboflow Dataset
 ================================================
 Train a YOLOv8 nano model on a custom Roboflow dataset.
 
-Install dependencies before running:
-    pip install ultralytics roboflow
-
-Run training:
+Quick start:
+    pip install -r requirements.txt
     python main.py
+
+GPU Backends
+------------
+- NVIDIA: standard PyTorch CUDA build
+- AMD   : install ROCm PyTorch (see README.md)
+- Apple : MPS (Metal Performance Shaders)
 """
+
+import os
+
+import torch
 
 # ============================================================
 # CUSTOMIZABLE CONFIGURATION VARIABLES
@@ -18,22 +26,21 @@ Run training:
 ROBOFLOW_API_KEY = "guWp7Ac1Rjum0j2Y1nM2"
 ROBOFLOW_WORKSPACE = "asdasd-t7l4k"
 ROBOFLOW_PROJECT = "car-bcsfh"
-ROBOFLOW_VERSION = 1  # Dataset version to download
+ROBOFLOW_VERSION = 1
 ROBOFLOW_FORMAT = "yolov8"
 
 # Model configuration
-MODEL_TYPE = "yolov8n.pt"  # YOLOv8 Nano (nano = smallest/fastest)
+MODEL_TYPE = "yolov8n.pt"  # yolov8n = nano (smallest/fastest)
 
 # Training hyperparameters
 EPOCHS = 100
 IMG_SIZE = 640
 BATCH_SIZE = 16
 LEARNING_RATE = 0.01
-PATIENCE = 50  # Early stopping patience (0 to disable)
+PATIENCE = 50  # early stopping patience (0 to disable)
 
 # Augmentation & training options
-WORKERS = 8
-DEVICE = 0  # Use GPU device 0, or "cpu" for CPU training
+WORKERS = os.cpu_count() or 1  # use ALL CPU cores for data loading
 SEED = 42
 
 # Output configuration
@@ -45,11 +52,35 @@ CONF_THRESHOLD = 0.25
 IOU_THRESHOLD = 0.45
 
 # ============================================================
+# AUTO-DETECT BEST AVAILABLE DEVICE
+# ============================================================
+
+
+def detect_device():
+    """Return the best available device string for Ultralytics."""
+    if torch.cuda.is_available():
+        # Works for both NVIDIA CUDA and AMD ROCm (ROCm uses CUDA API compat)
+        backend = "ROCm" if torch.version.hip else "CUDA"
+        count = torch.cuda.device_count()
+        name = torch.cuda.get_device_name(0) if count else "unknown"
+        print(f"[System] {backend} detected — {count} device(s): {name}")
+        return "0"
+
+    if torch.backends.mps.is_available():
+        print("[System] MPS (Apple Silicon) detected")
+        return "mps"
+
+    cpu_count = os.cpu_count() or 1
+    print(f"[System] No GPU detected — using CPU with {cpu_count} cores")
+    return "cpu"
+
+
+DEVICE = detect_device()
+
+# ============================================================
 # TRAINING SCRIPT
 # ============================================================
 
-import os
-import shutil
 from pathlib import Path
 
 from roboflow import Roboflow
@@ -76,8 +107,10 @@ def train_model(data_yaml: str) -> str:
     print(f"\n[Ultralytics] Loading model: {MODEL_TYPE}")
     model = YOLO(MODEL_TYPE)
 
-    print(f"[Ultralytics] Starting training for {EPOCHS} epochs ...")
-    results = model.train(
+    print(
+        f"[Ultralytics] Starting training for {EPOCHS} epochs on device='{DEVICE}' ..."
+    )
+    model.train(
         data=data_yaml,
         epochs=EPOCHS,
         imgsz=IMG_SIZE,
@@ -109,10 +142,10 @@ def validate_model(weights_path: str, data_yaml: str):
         conf=CONF_THRESHOLD,
         iou=IOU_THRESHOLD,
         device=DEVICE,
-        split="test",  # validate on test split if available
+        split="test",
     )
 
-    print(f"\n[Results] Validation complete!")
+    print("\n[Results] Validation complete!")
     print(f"  mAP50-95: {metrics.box.map:.4f}")
     print(f"  mAP50:    {metrics.box.map50:.4f}")
     print(f"  mAP75:    {metrics.box.map75:.4f}")
@@ -122,7 +155,6 @@ def predict_example(weights_path: str, source_dir: str):
     """Run inference on a few images from the dataset for quick visual testing."""
     print(f"\n[Ultralytics] Running sample predictions ...")
 
-    # Try to find a few test images
     test_images_dir = os.path.join(source_dir, "test", "images")
     if not os.path.isdir(test_images_dir):
         test_images_dir = os.path.join(source_dir, "valid", "images")
@@ -135,7 +167,7 @@ def predict_example(weights_path: str, source_dir: str):
         os.path.join(test_images_dir, f)
         for f in os.listdir(test_images_dir)
         if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp"))
-    ][:5]  # limit to 5 images
+    ][:5]
 
     if not image_files:
         print("  No images found for sample prediction.")
@@ -146,7 +178,7 @@ def predict_example(weights_path: str, source_dir: str):
     os.makedirs(predict_dir, exist_ok=True)
 
     for img_path in image_files:
-        results = model.predict(
+        model.predict(
             source=img_path,
             conf=CONF_THRESHOLD,
             iou=IOU_THRESHOLD,
@@ -160,6 +192,11 @@ def predict_example(weights_path: str, source_dir: str):
 
 
 def main():
+    if DEVICE == "cpu":
+        cpu_count = os.cpu_count() or 1
+        torch.set_num_threads(cpu_count)
+        print(f"[System] CPU threads set to {cpu_count}")
+
     # 1. Download dataset
     data_yaml = download_roboflow_dataset(
         ROBOFLOW_API_KEY,
@@ -175,8 +212,7 @@ def main():
     # 3. Validate model
     validate_model(best_weights, data_yaml)
 
-    # 4. Optional: sample predictions
-    # Determine dataset root from data.yaml path
+    # 4. Sample predictions
     dataset_root = os.path.dirname(data_yaml)
     predict_example(best_weights, dataset_root)
 
