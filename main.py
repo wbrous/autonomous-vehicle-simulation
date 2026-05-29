@@ -34,12 +34,12 @@ ROBOFLOW_VERSION = 1
 ROBOFLOW_FORMAT = "yolov8"
 
 # Model configuration
-MODEL_TYPE = "yolov8n.pt"  # yolov8n = nano (smallest/fastest)
+MODEL_TYPE = "yolov8x.pt"  # yolov8x = extra large (most accurate, 68M params)
 
 # Training hyperparameters
 EPOCHS = 50  # 50 epochs sufficient for single-class fine-tune; 100 overfits
 IMG_SIZE = 640
-BATCH_SIZE = 64  # optimal for 20GB VRAM; 32→64 doubles GPU utilization without OOM risk
+BATCH_SIZE = 16  # yolov8x uses ~6x more VRAM than nano; 64→16 to fit 20GB
 LEARNING_RATE = 0.01
 PATIENCE = 15  # stop early if validation mAP plateaus — saves hours of wasted compute
 
