@@ -39,7 +39,7 @@ MODEL_TYPE = "yolov8n.pt"  # yolov8n = nano (smallest/fastest)
 # Training hyperparameters
 EPOCHS = 100
 IMG_SIZE = 640
-BATCH_SIZE = 16
+BATCH_SIZE = 32  # was 16; 20GB VRAM headroom allows larger batches
 LEARNING_RATE = 0.01
 PATIENCE = 50  # early stopping patience (0 to disable)
 
