@@ -37,11 +37,11 @@ ROBOFLOW_FORMAT = "yolov8"
 MODEL_TYPE = "yolov8n.pt"  # yolov8n = nano (smallest/fastest)
 
 # Training hyperparameters
-EPOCHS = 100
+EPOCHS = 50  # 50 epochs sufficient for single-class fine-tune; 100 overfits
 IMG_SIZE = 640
 BATCH_SIZE = 64  # optimal for 20GB VRAM; 32→64 doubles GPU utilization without OOM risk
 LEARNING_RATE = 0.01
-PATIENCE = 50  # early stopping patience (0 to disable)
+PATIENCE = 15  # stop early if validation mAP plateaus — saves hours of wasted compute
 
 # Augmentation & training options
 SEED = 42
