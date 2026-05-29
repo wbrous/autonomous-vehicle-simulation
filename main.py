@@ -130,7 +130,7 @@ def train_model(data_yaml: str) -> str:
         exist_ok=True,
     )
 
-    best_weights = os.path.join(PROJECT_NAME, RUN_NAME, "weights", "best.pt")
+    best_weights = str(model.trainer.best)
     print(f"[Ultralytics] Training complete. Best weights: {best_weights}")
     return best_weights
 
