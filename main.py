@@ -16,6 +16,10 @@ GPU Backends
 
 import os
 
+# ROCm: hide integrated GPU (Raphael) before PyTorch initializes CUDA/HIP
+if os.environ.get("HIP_VISIBLE_DEVICES") is None:
+    os.environ["HIP_VISIBLE_DEVICES"] = "0"
+
 import torch
 
 # ============================================================
@@ -40,7 +44,6 @@ LEARNING_RATE = 0.01
 PATIENCE = 50  # early stopping patience (0 to disable)
 
 # Augmentation & training options
-WORKERS = os.cpu_count() or 1  # use ALL CPU cores for data loading
 SEED = 42
 
 # Output configuration
@@ -74,8 +77,10 @@ def detect_device():
     print(f"[System] No GPU detected — using CPU with {cpu_count} cores")
     return "cpu"
 
-
 DEVICE = detect_device()
+
+# ROCm requires workers=0 to avoid "Module not initialized" crash in dataloaders
+WORKERS = 0 if DEVICE != "cpu" and torch.version.hip else (os.cpu_count() or 1)
 
 # ============================================================
 # TRAINING SCRIPT
