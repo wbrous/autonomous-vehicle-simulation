@@ -23,6 +23,7 @@ DATASETS = [
 
 OUTPUT_DIR = "combined-vehicle-dataset"
 IMAGES_PER_SPLIT = {"train": 0.80, "valid": 0.15, "test": 0.05}
+MAX_IMAGES = 2000  # cap total images for faster training
 
 
 def download_datasets():
@@ -62,6 +63,8 @@ def remap_labels(label_path: Path, class_map: dict):
 
 def collect_all_images_labels(dataset_paths: list):
     """Gather all (image_path, label_path) pairs from downloaded datasets."""
+
+
     pairs = []
     for prefix, loc in dataset_paths:
         data_yaml = Path(loc) / "data.yaml"
@@ -92,8 +95,9 @@ def collect_all_images_labels(dataset_paths: list):
                 remap_labels(lbl_file, class_map)
                 if lbl_file.exists():
                     pairs.append((img_file, lbl_file))
+                    if len(pairs) >= MAX_IMAGES:
+                        return pairs
     return pairs
-
 
 def build_split(pairs: list, out_dir: Path):
     """Copy images/labels into train/valid/test with the defined split ratios."""

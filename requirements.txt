@@ -1,5 +1,7 @@
 ultralytics>=8.0.0
 roboflow>=1.1.0
+matplotlib>=3.5.0
+onnxruntime>=1.15.0
 
 # PyTorch backend — pick ONE:
 # NVIDIA CUDA : pip install torch torchvision

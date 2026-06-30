@@ -43,7 +43,9 @@ def find_latest_weights():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run YOLOv8 inference on a test image directory.")
+    parser = argparse.ArgumentParser(
+        description="Run YOLOv8 inference on a test image directory."
+    )
     parser.add_argument(
         "--weights",
         type=str,
@@ -87,7 +89,9 @@ def main():
     if weights_path is None:
         weights_path = find_latest_weights()
         if weights_path is None:
-            print("[Error] No --weights provided and no best.pt found under runs/detect/.")
+            print(
+                "[Error] No --weights provided and no best.pt found under runs/detect/."
+            )
             raise SystemExit(1)
         print(f"[Auto] Using latest weights: {weights_path}")
     else:
@@ -120,41 +124,61 @@ def main():
 
     # Run batch prediction
     print(f"[Info] Running inference (conf={args.conf}, iou={args.iou}) ...")
+
+    # Force absolute path for project so Ultralytics doesn't prepend runs/detect/
+    project_path = os.path.abspath(args.project)
+
     t0 = time.time()
-    results = model.predict(
-        source=image_files,
+    results_gen = model.predict(
+        source=source_dir,
         conf=args.conf,
         iou=args.iou,
         device=device,
         save=True,
-        project=args.project,
+        project=project_path,
         name=args.name,
         exist_ok=True,
         verbose=False,
+        stream=True,
     )
-    elapsed = time.time() - t0
 
     # Stats
-    total_detections = sum(len(r.boxes) for r in results)
-    images_with_detections = sum(1 for r in results if len(r.boxes) > 0)
+    total_detections = 0
+    images_with_detections = 0
     avg_conf = 0.0
     conf_count = 0
-    for r in results:
+    num_images = 0
+
+    for r in results_gen:
+        num_images += 1
+        n_boxes = len(r.boxes)
+        total_detections += n_boxes
+        if n_boxes > 0:
+            images_with_detections += 1
+
         if r.boxes.conf is not None:
             avg_conf += r.boxes.conf.sum().item()
             conf_count += len(r.boxes.conf)
+
+    elapsed = time.time() - t0
     avg_conf = avg_conf / conf_count if conf_count > 0 else 0.0
 
     print()
     print("=" * 50)
     print("[Results] Inference complete")
-    print(f"  Images processed:     {len(results)}")
+    print(f"  Images processed:     {num_images}")
     print(f"  Images with objects:  {images_with_detections}")
     print(f"  Total detections:     {total_detections}")
-    print(f"  Avg detections/img:   {total_detections / len(results):.2f}")
+    print(
+        f"  Avg detections/img:   {total_detections / num_images if num_images > 0 else 0.0:.2f}"
+    )
     print(f"  Avg confidence:       {avg_conf:.3f}")
-    print(f"  Time elapsed:         {elapsed:.1f}s ({len(results) / elapsed:.1f} img/s)")
-    print(f"  Output saved to:      {os.path.abspath(os.path.join(args.project, args.name))}")
+    print(
+        f"  Time elapsed:         {elapsed:.1f}s ({num_images / elapsed if elapsed > 0 else 0.0:.1f} img/s)"
+    )
+    print(
+        f"  Output saved to:      {os.path.abspath(os.path.join(args.project, args.name))}"
+    )
     print("=" * 50)
 
 
