@@ -15,6 +15,8 @@ GPU Backends
 """
 
 import os
+import shutil
+from pathlib import Path
 
 # ROCm: hide integrated GPU (Raphael) before PyTorch initializes CUDA/HIP
 if os.environ.get("HIP_VISIBLE_DEVICES") is None:
@@ -27,30 +29,43 @@ import torch
 # ============================================================
 
 # Roboflow credentials and project info
-ROBOFLOW_API_KEY = "guWp7Ac1Rjum0j2Y1nM2"
+def _load_dotenv():
+    """Load ROBOFLOW_API_KEY from repo-root .env (keeps the secret out of git)."""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_dotenv()
+ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
 ROBOFLOW_WORKSPACE = "asdasd-t7l4k"
 ROBOFLOW_PROJECT = "car-bcsfh"
 ROBOFLOW_VERSION = 1
 ROBOFLOW_FORMAT = "yolov8"
 
-MODEL_TYPE = "yolov8n.pt"  # yolov8x = extra large (most accurate, 68M params)
+MODEL_TYPE = "yolo12m.pt"  # YOLOv12 medium ~20M params — better accuracy than nano, still real-time
 
 # Dataset size cap (set to None to use all images)
-MAX_IMAGES = 2000
+MAX_IMAGES = None
 
 # Training hyperparameters
-EPOCHS = 50  # 50 epochs sufficient for single-class fine-tune; 100 overfits
+EPOCHS = 150  # losses were still falling at epoch 50; let it cook
 IMG_SIZE = 640
-BATCH_SIZE = 64  # yolov8x uses ~6x more VRAM than nano; 64→16 to fit 20GB
-LEARNING_RATE = 0.05
-PATIENCE = 15  # stop early if validation mAP plateaus — saves hours of wasted compute
+BATCH_SIZE = 64  # yolo12m @ 640 imgsz fits comfortably in 24GB VRAM
+LEARNING_RATE = 0.01
+PATIENCE = 30  # don't cut a still-improving run short; let early-stop decide
 
 # Augmentation & training options
 SEED = 42
 
 # Output configuration
-PROJECT_NAME = "yolov8x-vehicle-training"
-RUN_NAME = "vehicle-run-1"
+PROJECT_NAME = "yolo12m-150epochs"
+RUN_NAME = "run-1"
 
 # Post-training validation
 CONF_THRESHOLD = 0.25
@@ -310,10 +325,40 @@ def plot_training_graphs(save_dir: str):
 
 
 
+def save_epoch_checkpoint(trainer):
+    """Copy last.pt and best.pt into an epoch-specific subfolder after each save."""
+    epoch_num = trainer.epoch + 1  # 0-indexed → 1-indexed
+    ckpt_dir = Path(trainer.save_dir) / "epoch_checkpoints" / f"epoch_{epoch_num:02d}"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    last_pt = Path(trainer.save_dir) / "weights" / "last.pt"
+    best_pt = Path(trainer.save_dir) / "weights" / "best.pt"
+
+    if last_pt.exists():
+        shutil.copy2(last_pt, ckpt_dir / "last.pt")
+    if best_pt.exists():
+        shutil.copy2(best_pt, ckpt_dir / "best.pt")
+
+    print(f"  [Checkpoint] Saved epoch {epoch_num} → {ckpt_dir}")
+
+
 def train_model(data_yaml: str) -> tuple[str, str]:
-    """Train YOLOv8 nano and return paths to best weights (.pt) and ONNX export."""
-    print(f"\n[Ultralytics] Loading model: {MODEL_TYPE}")
-    model = YOLO(MODEL_TYPE)
+    """Train YOLOv8 nano and return paths to best weights and run directory."""
+    last_ckpt = Path(f"{PROJECT_NAME}/{RUN_NAME}/weights/last.pt")
+    if not last_ckpt.exists():
+        last_ckpt = Path("runs/detect") / PROJECT_NAME / RUN_NAME / "weights/last.pt"
+    resume_training = False
+    
+    if last_ckpt.exists():
+        print(f"\n[Ultralytics] Found previous checkpoint: {last_ckpt}")
+        print("[Ultralytics] Resuming training from where it left off...")
+        model = YOLO(str(last_ckpt))
+        resume_training = True
+    else:
+        print(f"\n[Ultralytics] Loading fresh model: {MODEL_TYPE}")
+        model = YOLO(MODEL_TYPE)
+
+    model.add_callback("on_model_save", save_epoch_checkpoint)
 
     print(
         f"[Ultralytics] Starting training for {EPOCHS} epochs on device='{DEVICE}' ..."
@@ -331,6 +376,22 @@ def train_model(data_yaml: str) -> tuple[str, str]:
         project=PROJECT_NAME,
         name=RUN_NAME,
         exist_ok=True,
+        cos_lr=True,
+        # Augmentation tuned for pinhole distance: preserve box shape/aspect.
+        # Aggressive scale/mixup/rotation distort h_px and poison d=f·H/h.
+        mosaic=1.0,
+        mixup=0.0,
+        copy_paste=0.0,
+        degrees=0.0,
+        translate=0.2,
+        scale=0.5,
+        flipud=0.0,
+        hsv_h=0.015,
+        hsv_s=0.7,
+        hsv_v=0.4,
+        erasing=0.1,
+        close_mosaic=20,
+        resume=resume_training,
     )
 
     best_weights = str(model.trainer.best)
@@ -340,18 +401,9 @@ def train_model(data_yaml: str) -> tuple[str, str]:
         f"[Graphs] Saved to {run_dir}: loss_curves.png, precision_recall.png, mAP.png, learning_rate.png"
     )
     print(f"[Ultralytics] Training complete. Best weights: {best_weights}")
+    print(f"[Checkpoints] Per-epoch snapshots in: {run_dir}/epoch_checkpoints/")
 
-    # Export best model to ONNX for faster ROCm inference
-    onnx_path = os.path.join(run_dir, "best.onnx")
-    if not os.path.isfile(onnx_path):
-        print(f"[ONNX] Exporting best model to ONNX ...")
-        export_model = YOLO(best_weights)
-        export_model.export(format="onnx", imgsz=IMG_SIZE, half=(DEVICE != "cpu"))
-        print(f"[ONNX] Export complete: {onnx_path}")
-    else:
-        print(f"[ONNX] Already exists: {onnx_path}")
-
-    return best_weights, onnx_path
+    return best_weights, run_dir
 
 
 def validate_model(weights_path: str, data_yaml: str):
@@ -416,33 +468,50 @@ def predict_example(weights_path: str, source_dir: str):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", choices=["combined", "bdd10k"],
+                        default="bdd10k",
+                        help="combined-vehicle-dataset (2-class old model) "
+                             "or BDD10K dashcam 4-class {sedan,truck,bus,ped}")
+    args = parser.parse_args()
+
     if DEVICE == "cpu":
         cpu_count = os.cpu_count() or 1
         torch.set_num_threads(cpu_count)
         print(f"[System] CPU threads set to {cpu_count}")
 
-    # 1. Use combined local dataset
-    data_yaml = "combined-vehicle-dataset/data.yaml"
-    if not os.path.isfile(data_yaml):
-        print(f"[Error] Combined dataset not found: {data_yaml}")
-        print("  Run: python build_dataset.py")
-        raise SystemExit(1)
-    print(f"[Dataset] Using combined vehicle dataset: {data_yaml}")
-    print(f"  (Run 'python build_dataset.py' to rebuild if needed)")
+    # 1. Pick dataset: BDD10K (dashcam-friendly, 4-class).
+    if args.dataset == "bdd10k":
+        data_yaml = "combined-bdd10k/data.yaml"
+        if not os.path.isfile(data_yaml):
+            print(f"[Error] BDD10K dataset not found: {data_yaml}")
+            print("  Build it first:  python build_bdd10k_dataset.py")
+            raise SystemExit(1)
+        print(f"[Dataset] BDD10K (4-class sedan/truck/bus/ped): {data_yaml}")
+    else:
+        data_yaml = "combined-vehicle-dataset/data.yaml"
+        if not os.path.isfile(data_yaml):
+            print(f"[Error] Combined dataset not found: {data_yaml}")
+            print("  Run: python build_dataset.py")
+            raise SystemExit(1)
+        print(f"[Dataset] Combined vehicle dataset (2-class): {data_yaml}")
+    print(f"  (Rebuild: python {'build_bdd10k_dataset.py' if args.dataset == 'bdd10k' else 'build_dataset.py'})")
 
-    # 2. Optionally cap dataset size
-    if MAX_IMAGES is not None:
-        data_yaml = subset_dataset(data_yaml, MAX_IMAGES)
+    # 2. Train model (full dataset — MAX_IMAGES=None)
+    best_weights, run_dir = train_model(data_yaml)
 
-    # 3. Train model
-    best_weights, onnx_path = train_model(data_yaml)
-
-    # 4. Validate model using ONNX (faster on ROCm)
-    validate_model(onnx_path, data_yaml)
-
-    # 5. Sample predictions using ONNX
-    dataset_root = os.path.dirname(data_yaml)
-    predict_example(onnx_path, dataset_root)
+    # 4. Summary
+    ckpt_dir = os.path.join(run_dir, "epoch_checkpoints")
+    print(f"\n{'='*60}")
+    print(f"Training complete!")
+    print(f"  Best weights: {best_weights}")
+    print(f"  Run directory: {run_dir}")
+    print(f"  Epoch checkpoints: {ckpt_dir}")
+    print(f"  Graphs: {run_dir}/loss_curves.png, mAP.png, etc.")
+    print(f"\nTo evaluate a specific epoch:")
+    print(f"  python test.py --weights {ckpt_dir}/epoch_30/last.pt")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

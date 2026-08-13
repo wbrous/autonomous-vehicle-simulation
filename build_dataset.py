@@ -1,5 +1,6 @@
 """
-Download and merge multiple Roboflow vehicle datasets into a single 'vehicle' class.
+Download and merge multiple Roboflow vehicle + pedestrian datasets
+into a unified 2-class schema: 0=vehicle, 1=pedestrian.
 
 Usage:
     python build_dataset.py
@@ -11,38 +12,87 @@ from pathlib import Path
 
 from roboflow import Roboflow
 
-ROBOFLOW_API_KEY = "guWp7Ac1Rjum0j2Y1nM2"
+def _load_dotenv():
+    """Load ROBOFLOW_API_KEY from repo-root .env (keeps the secret out of git)."""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
 
-# (workspace, project, version) → download name prefix
+
+_load_dotenv()
+ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
+
+# Each entry: workspace, project, version, prefix, class_remap
+# class_remap maps source class index string → target class index string
 DATASETS = [
-    ("asdasd-t7l4k", "car-bcsfh", 1, "car"),           # ~11.5K images
-    ("vehicle-detection-yob23", "vehicle-yolo-v8", 1, "vehicle_yolo"),  # ~3K
-    ("yolov8-m2va2", "detect-vehicles-m5h3j", 1, "detect_vehicles"),   # ~3.5K
-    ("yolov8-foyly", "vehicle-dpbrt", 1, "vehicle_basic"),              # ~1K
+    # --- Known working vehicle datasets ---
+    {"workspace": "asdasd-t7l4k", "project": "car-bcsfh", "version": 1,
+     "prefix": "car", "class_remap": {str(i): "0" for i in range(20)}},
+    {"workspace": "yolov8-foyly", "project": "vehicle-dpbrt", "version": 1,
+     "prefix": "vehicle_basic", "class_remap": {str(i): "0" for i in range(20)}},
+    {"workspace": "roboflow-100", "project": "vehicles-q0x2v", "version": 2,
+     "prefix": "vehicles_rf100", "class_remap": {str(i): "0" for i in range(20)}},
+     
+    # --- New valid vehicle datasets (replacing broken ones) ---
+    {"workspace": "vehicledataset-oksvx", "project": "vehicle-c1wb2", "version": 2,
+     "prefix": "vehicle_22k", "class_remap": {str(i): "0" for i in range(20)}},
+    {"workspace": "indian-institute-of-technology-bhubaneswar", "project": "augmented-vehicle-dataset", "version": 8,
+     "prefix": "vehicle_iit", "class_remap": {str(i): "0" for i in range(20)}},
+
+    # --- New valid pedestrian dataset (replacing broken ones) ---
+    {"workspace": "pedestrian-detection-qqdeh", "project": "pedestrian-detection-mdspp", "version": 1,
+     "prefix": "pedestrian_4k", "class_remap": {str(i): "1" for i in range(20)}},
+]
+
+# Local datasets: skip Roboflow download, use existing directory
+# pedestrian--7 classes: 0='-', 1='Pedestrian', 2='car', 3='pedestrian', 4='train'
+LOCAL_DATASETS = [
+    {"path": "pedestrian--7", "prefix": "pedestrian_local",
+     "class_remap": {"1": "1", "2": "0", "3": "1"}},
 ]
 
 OUTPUT_DIR = "combined-vehicle-dataset"
 IMAGES_PER_SPLIT = {"train": 0.80, "valid": 0.15, "test": 0.05}
-MAX_IMAGES = 2000  # cap total images for faster training
+MAX_IMAGES = None  # use all available images
 
 
 def download_datasets():
-    """Download all datasets in YOLOv8 format, return list of paths."""
+    """Download all Roboflow datasets, return list of (prefix, location, class_remap)."""
     rf = Roboflow(api_key=ROBOFLOW_API_KEY)
     paths = []
-    for workspace, project, version, prefix in DATASETS:
+    for ds in DATASETS:
+        workspace = ds["workspace"]
+        project = ds["project"]
+        version = ds["version"]
+        prefix = ds["prefix"]
+        class_remap = ds["class_remap"]
         try:
             proj = rf.workspace(workspace).project(project)
-            ds = proj.version(version).download("yolov8", location=f"tmp_{prefix}")
-            paths.append((prefix, ds.location))
-            print(f"[Downloaded] {prefix}: {ds.location}")
+            downloaded = proj.version(version).download("yolov8", location=f"tmp_{prefix}")
+            paths.append((prefix, downloaded.location, class_remap))
+            print(f"[Downloaded] {prefix}: {downloaded.location}")
         except Exception as e:
             print(f"[Skip] {prefix}: {e}")
+
+    # Add local datasets (no download needed)
+    for ds in LOCAL_DATASETS:
+        loc = ds["path"]
+        if Path(loc).exists():
+            paths.append((ds["prefix"], loc, ds["class_remap"]))
+            print(f"[Local] {ds['prefix']}: {loc}")
+        else:
+            print(f"[Skip] {ds['prefix']}: path '{loc}' not found")
+
     return paths
 
 
-def remap_labels(label_path: Path, class_map: dict):
-    """Rewrite label file so every box uses class index 0 (vehicle)."""
+def remap_labels(label_path: Path, class_remap: dict):
+    """Rewrite label file using the given class_remap; delete file if no valid boxes remain."""
     lines = label_path.read_text().strip().split("\n")
     new_lines = []
     for line in lines:
@@ -52,8 +102,8 @@ def remap_labels(label_path: Path, class_map: dict):
         if len(parts) < 5:
             continue
         orig_cls = parts[0]
-        if orig_cls in class_map:
-            parts[0] = "0"  # collapse to vehicle
+        if orig_cls in class_remap:
+            parts[0] = class_remap[orig_cls]
             new_lines.append(" ".join(parts))
     if new_lines:
         label_path.write_text("\n".join(new_lines) + "\n")
@@ -62,19 +112,13 @@ def remap_labels(label_path: Path, class_map: dict):
 
 
 def collect_all_images_labels(dataset_paths: list):
-    """Gather all (image_path, label_path) pairs from downloaded datasets."""
-
-
+    """Gather all (image_path, label_path) pairs from datasets, remapping labels."""
     pairs = []
-    for prefix, loc in dataset_paths:
+    for prefix, loc, class_remap in dataset_paths:
         data_yaml = Path(loc) / "data.yaml"
         if not data_yaml.exists():
             print(f"[Warn] No data.yaml in {loc}, skipping")
             continue
-
-        # Read class names from data.yaml to build remap
-        class_map = {"0": "vehicle", "1": "vehicle", "2": "vehicle",
-                     "3": "vehicle", "4": "vehicle", "5": "vehicle"}
 
         for split in ["train", "valid", "test"]:
             split_dir = Path(loc) / split
@@ -91,13 +135,15 @@ def collect_all_images_labels(dataset_paths: list):
                 lbl_file = lbl_dir / (img_file.stem + ".txt")
                 if not lbl_file.exists():
                     continue
-                # Remap labels to single class; file may be removed if empty
-                remap_labels(lbl_file, class_map)
+                remap_labels(lbl_file, class_remap)
                 if lbl_file.exists():
                     pairs.append((img_file, lbl_file))
-                    if len(pairs) >= MAX_IMAGES:
+                    if MAX_IMAGES is not None and len(pairs) >= MAX_IMAGES:
                         return pairs
+
+        print(f"  [{prefix}] collected so far: {len(pairs)}")
     return pairs
+
 
 def build_split(pairs: list, out_dir: Path):
     """Copy images/labels into train/valid/test with the defined split ratios."""
@@ -108,7 +154,6 @@ def build_split(pairs: list, out_dir: Path):
     n = len(pairs)
     n_train = int(n * IMAGES_PER_SPLIT["train"])
     n_val = int(n * IMAGES_PER_SPLIT["valid"])
-    # rest goes to test
 
     splits = {
         "train": pairs[:n_train],
@@ -134,23 +179,24 @@ def build_split(pairs: list, out_dir: Path):
 
 
 def write_data_yaml(out_dir: Path):
-    """Write unified data.yaml for single-class vehicle detection."""
+    """Write unified data.yaml for 2-class vehicle+pedestrian detection."""
     content = f"""path: {out_dir.absolute()}
 train: train/images
 val: valid/images
 test: test/images
 
-nc: 1
+nc: 2
 names:
   0: vehicle
+  1: pedestrian
 """
     (out_dir / "data.yaml").write_text(content)
 
 
 def clean_tmp_dirs():
     """Remove temporary download directories."""
-    for workspace, project, version, prefix in DATASETS:
-        tmp = Path(f"tmp_{prefix}")
+    for ds in DATASETS:
+        tmp = Path(f"tmp_{ds['prefix']}")
         if tmp.exists():
             shutil.rmtree(tmp)
             print(f"[Cleaned] {tmp}")
@@ -179,7 +225,7 @@ def main():
     clean_tmp_dirs()
 
     print(f"\n✅ Combined dataset ready: {out.absolute()}")
-    print(f"   Classes: 1 (vehicle)")
+    print(f"   Classes: 2 (vehicle, pedestrian)")
     print(f"   Total images: {len(pairs)}")
 
 

@@ -2,6 +2,17 @@
 car-1/
 car-2/
 *.zip
+bdd10k_raw/
+combined-bdd10k/
+combined-vehicle-dataset/
+pedestrian--7/
+video_tests/
+video_results/
+tmp_dataset/
+lisa_dataset/
+lisa_signs_dataset/
+coco128/
+vistas_yolo/
 
 # Model weights
 *.pt
@@ -29,4 +40,24 @@ env/
 # OS
 .DS_Store
 Thumbs.db
-combined-vehicle-dataset/
+
+# Archived files
+archive/
+
+# Environment
+.env
+
+# Screenshots
+screenshot_*.png
+
+# Logs
+*.log
+log.txt
+
+# Large model files
+*.onnx.data
+*.pth
+*.tar.gz
+
+# Misc
+files.txt

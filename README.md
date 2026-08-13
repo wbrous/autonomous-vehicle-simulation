@@ -1,64 +1,63 @@
-# YOLOv8 Car Training
+# Camera ACC Demo
 
-YOLOv8 Nano training pipeline using a Roboflow dataset.
+Real-time adaptive cruise control (ACC) demo for a forward-facing camera. Detects vehicles, pedestrians, and traffic signals with YOLO, estimates distance via a pinhole camera model, tracks the ego lane with YOLOPv2, and renders an advisory brake/speed HUD. Headless: serves the annotated video stream over HTTP rather than opening an OpenCV window.
 
-## Quick Start
+## Run the demo
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Train
-python main.py
+# plus the PyTorch backend for your hardware (see below)
+python camera_demo_acc_web.py
 ```
 
-## Hardware Backends
+Open http://localhost:5000 to view the live annotated stream.
 
-The script auto-detects the best available device.
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--camera` | `0` | Camera device index |
+| `--width` | `1280` | Capture width |
+| `--height` | `720` | Capture height |
+| `--imgsz` | `640` | Detection inference size |
 
-| Vendor | Install Command | Notes |
-|--------|----------------|-------|
-| **NVIDIA CUDA** | `pip install torch torchvision` | Standard PyTorch build |
-| **AMD ROCm** | See below | RX 7000 series, MI series |
-| **Apple MPS** | `pip install torch torchvision` | M1/M2/M3 Macs |
-| **CPU** | `pip install torch torchvision` | Slow but works |
+All tunables (weights path, focal length, ACC zones, hazard thresholds) live in the `CONFIG` section near the top of `camera_demo_acc_web.py`.
 
-### AMD ROCm Setup (e.g. RX 7900 XT)
+## Runtime dependencies
 
-```bash
-# Install ROCm PyTorch (Linux only)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.2
+`requirements.txt` pins `ultralytics` and `flask`. Install the PyTorch backend for your hardware separately:
 
-# Verify
-gpu-detect
-python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
-```
+| Backend | Command |
+|---------|---------|
+| NVIDIA CUDA | `pip install torch torchvision` |
+| AMD ROCm (RX 7000 series) | `pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.2` |
+| CPU only | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu` |
 
-> Replace `rocm6.2` with the latest version from [pytorch.org/get-started/locally](https://pytorch.org/get-started/locally/).
+Required model files (gitignored): `weights/yolo12m_vistas_best.pt` (detection) and `weights/yolopv2.pt` (lane detection).
 
-## Configuration
+## Training and dataset building
 
-All tunables are at the top of `main.py`:
+The training and dataset-building scripts are kept at the root:
 
-```python
-EPOCHS = 100
-IMG_SIZE = 640
-BATCH_SIZE = 16
-LEARNING_RATE = 0.01
-PATIENCE = 50
-WORKERS = os.cpu_count() or 1  # all cores
-```
+- `main.py` — YOLO training pipeline (Roboflow dataset)
+- `train_signs.py`, `train_lisa.py`, `train_actual_lisa_signs.py` — sign/LISA training variants
+- `build_dataset.py`, `build_bdd10k_dataset.py`, `vistas_to_yolo.py`, `mtsd_to_yolo.py`, `create_dataset.py`, `extract_signs.py` — dataset builders/converters
 
-## Project Structure
+These need extra dependencies beyond the demo runtime: `roboflow`, `matplotlib`, `onnxruntime`.
+
+## Environment
+
+Copy `.env.example` to `.env` and set `ROBOFLOW_API_KEY`. It is read by `build_dataset.py` and `main.py`; the key is kept out of source control.
+
+## Layout
 
 ```
 .
-├── main.py              # training script
-├── requirements.txt     # dependencies
-└── yolov8-car-training/ # outputs (created at runtime)
-    └── nano-run-1/
-        ├── weights/
-        │   ├── best.pt
-        │   └── last.pt
-        └── predictions/
+├── camera_demo_acc_web.py   # active demo application
+├── main.py                  # training pipeline
+├── build_dataset.py         # Roboflow dataset builder
+├── *_to_yolo.py             # dataset converters
+├── train_*.py               # training variants
+├── weights/                 # model weights: yolo12m_vistas_best.pt, yolopv2.pt (gitignored)
+├── requirements.txt
+├── .env.example
+└── archive/                 # superseded demos, datasets, and eval scripts
 ```
