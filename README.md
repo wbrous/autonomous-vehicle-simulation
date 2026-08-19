@@ -2,7 +2,7 @@
 
 Real-time adaptive cruise control from a single forward-facing camera — YOLO detection, YOLOPv2 lane tracking, and an advisory brake/speed HUD, served headless in the browser.
 
-![Camera ACC Demo](docs/images/hero.svg)
+![Camera ACC Demo](docs/images/hero.png)
 
 ## What it does
 
@@ -18,11 +18,11 @@ A live camera feed is turned into a driving-assistance overlay. Every vehicle, p
 
 ## Screenshots
 
-![Detection with distance labels](docs/images/detection.svg)
+![Detection with distance labels](docs/images/detection.png)
 
-![Ego-lane overlay](docs/images/lanes.svg)
+![Ego-lane overlay](docs/images/lanes.png)
 
-![ACC decision HUD](docs/images/hud.svg)
+![ACC decision HUD](docs/images/hud.png)
 
 ## How it works
 
@@ -91,7 +91,7 @@ The two model files are committed directly in `weights/` (no longer gitignored):
 ├── build_dataset.py         # Roboflow dataset builder
 ├── *_to_yolo.py             # dataset converters
 ├── weights/                 # model weights (committed)
-├── docs/images/             # screenshots / placeholders
+├── docs/images/             # screenshots
 ├── requirements.txt
 ├── .env.example
 └── archive/                 # superseded demos, datasets, eval scripts

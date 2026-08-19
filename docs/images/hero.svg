@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Camera ACC Demo hero placeholder">
-  <rect width="1200" height="630" fill="#0f1117"/>
-  <rect x="24" y="24" width="1152" height="582" rx="16" fill="none" stroke="#3b4252" stroke-width="2" stroke-dasharray="14 10"/>
-  <text x="600" y="285" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="52" font-weight="700" fill="#e5e9f0">IMAGE PLACEHOLDER</text>
-  <text x="600" y="345" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="28" fill="#88c0d0">Camera ACC Demo hero</text>
-  <text x="600" y="390" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" fill="#4c566a">replace docs/images/hero.svg with a screenshot</text>
-</svg>
