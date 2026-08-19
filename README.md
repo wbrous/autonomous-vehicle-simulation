@@ -105,6 +105,16 @@ The two model files are committed directly in `weights/` (no longer gitignored):
 └── archive/                 # superseded demos, datasets, eval scripts
 ```
 
+## Challenges
+
+Problems I ran into building this, and how I fixed them:
+
+- **ROCm crash on the wrong GPU.** Training kept crashing with `Module not initialized` from `hip_global.cpp`. It turned out my RX 7900 XT was sharing device visibility with the CPU's integrated Raphael graphics, and PyTorch's ROCm dataloaders don't survive multiprocessing either. I fixed both by setting `HIP_VISIBLE_DEVICES=0` before `torch` gets imported and forcing `workers=0` on ROCm.
+- **85/15 class imbalance.** The first model I trained was basically useless in practice since I'd capped the dataset at 2,000 images without checking the split of person <-> vehicle, so it came out 85% pedestrian boxes to 15% vehicle. Additionally, it was trained for only 50 epochs with no augmentation tuning, which left the model in a bad state after I'd finished the training. To fix it, I rebuilt `build_dataset.py` to pull from 9 Roboflow sources plus a local dataset with per-source class remapping, dropped the image cap entirely, and retrained at 100 epochs with mosaic/mixup/copy-paste/HSV augmentation turned on.
+- **Adjacent-lane false positives.** There was also a lane-detection bug since `track_in_lane` only checked a box's bottom-center against the lane trapezoid, so a car in the next lane over would register as in-lane once it was far enough away that the trapezoid had narrowed. I fixed it by adding a second check on the box's top-center, gated to the horizon line, so close-range detection still works.
+- **Screenshot crash.** Screenshots crashed with `NotImplementedError` because `pygame.image.save()` can't handle the `DOUBLEBUF | RESIZABLE` surface the demo runs on, so I switched to writing the OpenCV frame directly with `cv2.imwrite` instead.
+- **Leaked API key and repo bloat.** At some point I realized I'd hardcoded a Roboflow API key in two files, and the repo had grown to ~30GB of old scripts, cloned repos, and stale checkpoints, so I moved the key into `.env`, archived what wasn't in use anymore, and deleted the untracked weight files.
+
 ## Training & datasets
 
 Training and dataset-building scripts are kept at the root (`main.py`, `train_*.py`, `build_*.py`, `*_to_yolo.py`). They require extra dependencies beyond the demo runtime: `roboflow`, `matplotlib`, `onnxruntime`. Set `ROBOFLOW_API_KEY` in `.env` (copy `.env.example`) for the Roboflow-based builders.
