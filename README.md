@@ -24,6 +24,12 @@ A live camera feed is turned into a driving-assistance overlay. Every vehicle, p
 
 ![ACC decision HUD](docs/images/hud.png)
 
+## Demo
+
+<video controls src="docs/videos/demo.mp4"></video>
+
+*Player not rendering? Open [docs/videos/demo.mp4](docs/videos/demo.mp4).*
+
 ## How it works
 
 ```mermaid
@@ -91,7 +97,9 @@ The two model files are committed directly in `weights/` (no longer gitignored):
 ├── build_dataset.py         # Roboflow dataset builder
 ├── *_to_yolo.py             # dataset converters
 ├── weights/                 # model weights (committed)
-├── docs/images/             # screenshots
+├── docs/                    # docs assets
+│   ├── images/              # screenshots
+│   └── videos/              # demo video
 ├── requirements.txt
 ├── .env.example
 └── archive/                 # superseded demos, datasets, eval scripts
