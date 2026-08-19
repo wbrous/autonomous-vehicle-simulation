@@ -115,6 +115,15 @@ Problems I ran into building this, and how I fixed them:
 - **Screenshot crash.** Screenshots crashed with `NotImplementedError` because `pygame.image.save()` can't handle the `DOUBLEBUF | RESIZABLE` surface the demo runs on, so I switched to writing the OpenCV frame directly with `cv2.imwrite` instead.
 - **Leaked API key and repo bloat.** At some point I realized I'd hardcoded a Roboflow API key in two files, and the repo had grown to ~30GB of old scripts, cloned repos, and stale checkpoints, so I moved the key into `.env`, archived what wasn't in use anymore, and deleted the untracked weight files.
 
+## Future additions
+
+Things that are still open:
+
+- **Real ego-speed input.** The HUD's `HEAVY_BRAKE`/`LIGHT_BRAKE` actions are advisory only, there's no speed sensor or actuation behind them. Wiring in an OBD-II reader (or even GPS-derived speed) would let the decision engine reason about actual closing speed instead of just distance trend.
+- **Adjacent-lane awareness.** The decision engine only looks at the lead vehicle in the ego lane. A car drifting into the lane from the side, or a merge, isn't part of the reasoning yet.
+- **Raspberry Pi deployment.** The pinhole distance math is cheap enough to run on a Pi, but getting there means exporting the detection model to NCNN, swapping `cv2.VideoCapture` for `picamera2`, and confirming framerate holds at 320px input.
+- **Better distance estimation.** Pinhole distance from bounding-box height is only accurate to about ±15-20%, and it degrades if the camera mount isn't level. Ground-plane geometry or a stereo pair would tighten that up, at the cost of needing a fixed, calibrated mount.
+
 ## Training & datasets
 
 Training and dataset-building scripts are kept at the root (`main.py`, `train_*.py`, `build_*.py`, `*_to_yolo.py`). They require extra dependencies beyond the demo runtime: `roboflow`, `matplotlib`, `onnxruntime`. Set `ROBOFLOW_API_KEY` in `.env` (copy `.env.example`) for the Roboflow-based builders.
