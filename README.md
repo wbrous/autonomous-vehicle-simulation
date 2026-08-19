@@ -26,7 +26,7 @@ A live camera feed is turned into a driving-assistance overlay. Every vehicle, p
 
 ## Demo
 
-<video controls src="docs/videos/demo.mp4"></video>
+https://github.com/user-attachments/assets/29aff393-a864-4848-8c4e-a2a53b9a0ea5
 
 *Player not rendering? Open [docs/videos/demo.mp4](docs/videos/demo.mp4).*
 
