@@ -15,10 +15,10 @@ coco128/
 vistas_yolo/
 
 # Model weights
-*.pt
-*.onnx
-*.engine
-*.mlmodel
+# *.pt
+# *.onnx
+# *.engine
+# *.mlmodel
 
 # Training outputs
 runs/
