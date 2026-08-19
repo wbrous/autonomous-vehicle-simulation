@@ -64,7 +64,7 @@ All tunables — weights path, focal length, ACC zones, hazard thresholds — li
 
 ## Model weights
 
-Place the two model files in `weights/` (gitignored):
+The two model files are committed directly in `weights/` (no longer gitignored):
 
 | File | Purpose |
 |------|---------|
@@ -90,7 +90,7 @@ Place the two model files in `weights/` (gitignored):
 ├── train_*.py               # training variants
 ├── build_dataset.py         # Roboflow dataset builder
 ├── *_to_yolo.py             # dataset converters
-├── weights/                 # model weights (gitignored)
+├── weights/                 # model weights (committed)
 ├── docs/images/             # screenshots / placeholders
 ├── requirements.txt
 ├── .env.example
